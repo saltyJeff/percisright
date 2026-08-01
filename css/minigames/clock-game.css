@@ -1,0 +1,25 @@
+/* Clock Game Mini-Game Styles */
+
+.clock-display {
+  font-size: 5.5rem;
+  font-weight: 900;
+  font-family: 'Courier New', Courier, monospace;
+  color: var(--primary-gold);
+  text-shadow: 0 0 25px rgba(255, 215, 0, 0.6);
+  margin: 1.25rem 0;
+  letter-spacing: 2px;
+}
+
+.clock-controls {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.cue-buttons-row {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin: 1.5rem 0;
+}
