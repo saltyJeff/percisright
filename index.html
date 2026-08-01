@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Price Is Right — Host Dashboard & Party Game</title>
+  <title>The Perc Is Right — Host Dashboard & Party Game</title>
 
   <!-- ES Modules Import Map -->
   <script type="importmap">
@@ -14,8 +14,8 @@
     }
   }
   </script>
-  
-  <!-- CSS Stylesheets -->
+
+  <!-- Custom & Mini-Game Stylesheets -->
   <link rel="stylesheet" href="css/main.css">
   <link rel="stylesheet" href="css/minigames/sliding-scale.css">
   <link rel="stylesheet" href="css/minigames/high-low-wheel.css">
@@ -26,14 +26,16 @@
 </head>
 <body>
 
-  <!-- Top App Navigation Header -->
+  <!-- Navigation Header with Hamburger Menu -->
   <header class="app-header">
-    <div class="brand-title">
-      🏷️ <span>THE PRICE IS RIGHT</span>
-    </div>
-    <div class="header-controls">
-      <button id="open-leaderboard-btn" class="btn btn-primary">🏆 Leaderboard</button>
-      <button id="reset-game-btn" class="btn btn-danger">🔄 New Game</button>
+    <div class="header-brand">🏷️ THE PERC IS RIGHT</div>
+    <div id="header-team-scores" class="header-team-scores"></div>
+    <div class="menu-container">
+      <button id="hamburger-btn" class="hamburger-btn" aria-label="Toggle Menu">☰ Menu</button>
+      <div id="hamburger-dropdown" class="dropdown-menu">
+        <button id="open-leaderboard-btn" class="dropdown-item">🏆 Leaderboard</button>
+        <button id="reset-game-btn" class="dropdown-item danger">🔄 New Game</button>
+      </div>
     </div>
   </header>
 
@@ -41,7 +43,7 @@
   <main class="container">
     
     <!-- Step Bar Progress Indicator -->
-    <div class="step-bar">
+    <nav class="step-bar">
       <div class="step-item active" id="step-indicator-1">
         <span class="step-number">1</span>
         <span>Game Setup</span>
@@ -58,139 +60,112 @@
         <span class="step-number">4</span>
         <span>Reveal Results</span>
       </div>
-    </div>
+    </nav>
 
-    <!-- ==================================================== -->
-    <!-- STEP 1: GAME SETUP SCREEN                            -->
-    <!-- ==================================================== -->
-    <section id="step-1-section" class="step-section">
-      <div class="glass-card">
-        <h2 style="color: var(--primary-gold); margin-bottom: 0.5rem;">🎮 Game Setup</h2>
-        <p class="text-muted" style="margin-bottom: 1.5rem;">Initialize your teams for the Price Is Right party game tournament.</p>
-        
-        <div class="form-group">
-          <label for="team-count-input">Number of Teams (2 – 6)</label>
-          <input type="number" id="team-count-input" class="form-control" value="4" min="2" max="6">
-        </div>
+    <!-- STEP 1: GAME SETUP -->
+    <article id="step-1-section" class="step-section">
+      <header>
+        <h2>🎮 Game Setup</h2>
+        <p>Initialize your teams for The Perc Is Right party game tournament.</p>
+      </header>
+      
+      <label for="team-count-input">Number of Teams (2 – 6)</label>
+      <input type="number" id="team-count-input" value="4" min="2" max="6">
 
-        <div class="form-group">
-          <label>Customize Team Names</label>
-          <div id="teams-grid-container" class="teams-grid">
-            <!-- Dynamic Team Cards Rendered by app.js using VanJS -->
-          </div>
-        </div>
-
-        <div style="margin-top: 2rem; text-align: right;">
-          <button id="start-game-btn" class="btn btn-primary btn-lg">🚀 Start Game & Continue</button>
-        </div>
+      <label>Customize Team Names</label>
+      <div id="teams-grid-container" class="teams-grid">
+        <!-- Rendered dynamically -->
       </div>
-    </section>
 
-    <!-- ==================================================== -->
-    <!-- STEP 2: SECRET HOST PREP PHASE                       -->
-    <!-- ==================================================== -->
-    <section id="step-2-section" class="step-section" style="display: none;">
-      <div class="glass-card host-secret-panel">
-        
-        <button id="toggle-host-blur-btn" class="btn btn-secondary blur-overlay-btn">🙈 Hide Secret Info</button>
+      <footer style="text-align: right; margin-top: 1.5rem;">
+        <button id="start-game-btn">🚀 Start Game & Continue</button>
+      </footer>
+    </article>
 
-        <h2 style="color: var(--accent-pink); margin-bottom: 0.5rem;">🔒 Host Secret Control Panel (<span id="round-number-title">Round 1</span>)</h2>
-        <p class="text-muted" style="margin-bottom: 1.5rem;">Set up secret item details and mini-game parameters before players view the public screen.</p>
+    <!-- STEP 2: HOST PREP PHASE -->
+    <article id="step-2-section" class="step-section" style="display: none;">
+      <header>
+        <h2>🔒 Host Control Panel (<span id="round-number-title">Round 1</span>)</h2>
+        <p>Set up secret item details and mini-game parameters before players view the public screen.</p>
+      </header>
 
-        <div id="host-secret-content" class="blur-content">
-          <div class="form-group">
-            <label for="item-name-input">Item Name / Description</label>
-            <input type="text" id="item-name-input" class="form-control" placeholder="e.g. Vintage Stand Mixer, Espresso Machine, Electric Scooter">
-          </div>
+      <div id="host-secret-content">
+        <label for="item-name-input">Item Name / Description</label>
+        <input type="text" id="item-name-input" placeholder="e.g. Vintage Stand Mixer, Espresso Machine, Electric Scooter">
 
-          <div class="form-group">
-            <label for="actual-price-input">Actual Price ($)</label>
-            <input type="number" id="actual-price-input" class="form-control" placeholder="e.g. 450.00" step="0.01">
-          </div>
+        <label for="actual-price-input">Actual Price ($)</label>
+        <input type="number" id="actual-price-input" placeholder="e.g. 450" step="1">
 
-          <div class="form-group">
-            <label for="minigame-select">Select Winner's Mini-Game</label>
-            <select id="minigame-select" class="form-control">
-              <option value="sliding-scale">1. The Sliding Scale</option>
-              <option value="high-low-wheel">2. High/Low Wheel Spin</option>
-              <option value="shell-game">3. Shell Game (3-Cup Shuffle)</option>
-              <option value="range-finder">4. Range Finder (Risk/Reward)</option>
-              <option value="clock-game">5. Clock Game (30-Second Rapid Fire)</option>
-              <option value="ten-chances">6. Ten Chances (Number Jumble)</option>
-            </select>
-          </div>
+        <label for="minigame-select">Select Winner's Mini-Game</label>
+        <select id="minigame-select">
+          <option value="sliding-scale">1. The Sliding Scale</option>
+          <option value="high-low-wheel">2. High/Low Wheel Spin</option>
+          <option value="shell-game">3. Shell Game (3-Cup Shuffle)</option>
+          <option value="clock-game">4. Clock Game (30-Second Rapid Fire)</option>
+          <option value="ten-chances">5. Ten Chances (Number Jumble)</option>
+        </select>
 
-          <!-- Dynamic Mini-game Config Container -->
-          <div id="minigame-host-config-container" style="margin-top: 1rem;"></div>
-        </div>
-
-        <div style="margin-top: 2rem; text-align: right;">
-          <button id="begin-public-round-btn" class="btn btn-primary btn-lg">📺 Lock Secret Data & Begin Public Round</button>
-        </div>
+        <div id="minigame-host-config-container" style="margin-top: 1rem;"></div>
       </div>
-    </section>
 
-    <!-- ==================================================== -->
-    <!-- STEP 3: PUBLIC BIDDING & MINI-GAME PHASE             -->
-    <!-- ==================================================== -->
-    <section id="step-3-section" class="step-section" style="display: none;">
-      <div class="glass-card">
-        <h2 style="color: var(--primary-gold); margin-bottom: 0.5rem; text-align: center;">📺 Round <span id="pub-round-num">1</span>: Bidding & Mini-Game</h2>
-        <h3 id="pub-item-name" style="text-align: center; color: var(--accent-cyan); margin-bottom: 1.5rem;">Item Description</h3>
+      <footer style="text-align: right; margin-top: 1.5rem;">
+        <button id="begin-public-round-btn">📺 Lock Secret Data & Begin Public Round</button>
+      </footer>
+    </article>
 
-        <!-- Bidding Inputs Container -->
-        <div id="bidding-teams-container" class="bidding-teams-grid">
-          <!-- Rendered dynamically -->
-        </div>
+    <!-- STEP 3: PUBLIC BIDDING & MINI-GAME -->
+    <article id="step-3-section" class="step-section" style="display: none;">
+      <header style="text-align: center;">
+        <h2>📺 Round <span id="pub-round-num">1</span>: Bidding & Mini-Game</h2>
+        <h3 id="pub-item-name">Item Description</h3>
+      </header>
 
-        <div style="text-align: center; margin-top: 1rem;">
-          <button id="lock-bids-btn" class="btn btn-primary btn-lg">🔒 Lock In All Bids</button>
-        </div>
-
-        <!-- Dynamic Mini-Game Interactive UI -->
-        <div id="active-minigame-area" class="minigame-container" style="display: none;">
-          <!-- Active Mini-game rendered dynamically -->
-        </div>
-
-        <div style="text-align: center; margin-top: 2rem;">
-          <button id="go-reveal-btn" class="btn btn-primary btn-lg" style="display: none; background: linear-gradient(135deg, #00e676, #00b0ff);">🎉 Reveal Round Results</button>
-        </div>
+      <div id="bidding-teams-container" class="bidding-teams-grid">
+        <!-- Rendered dynamically -->
       </div>
-    </section>
 
-    <!-- ==================================================== -->
-    <!-- STEP 4: REVEAL PHASE SCREEN                          -->
-    <!-- ==================================================== -->
-    <section id="step-4-section" class="step-section" style="display: none;">
-      <div class="glass-card">
-        <div class="reveal-hero">
-          <h2 style="color: var(--text-muted); text-transform: uppercase; font-size: 1rem;">Round Reveal</h2>
-          <div class="actual-price-tag" id="reveal-actual-price">$0.00</div>
-          <p class="text-muted" id="minigame-recap-text" style="font-size: 1.1rem; color: var(--accent-cyan); font-weight: 600;"></p>
-        </div>
-
-        <div id="round-results-grid" class="results-grid">
-          <!-- Rendered dynamically -->
-        </div>
-
-        <div style="text-align: center; margin-top: 2rem;">
-          <button id="next-round-btn" class="btn btn-primary btn-lg">▶ Start Next Round</button>
-        </div>
+      <div style="text-align: center; margin-top: 1rem;">
+        <button id="lock-bids-btn">🔒 Lock In All Bids</button>
       </div>
-    </section>
+
+      <div id="active-minigame-area" class="minigame-container" style="display: none;">
+        <!-- Mini-game rendered dynamically -->
+      </div>
+
+      <footer style="text-align: center; margin-top: 1.5rem;">
+        <button id="go-reveal-btn" style="display: none;">🎉 Reveal Round Results</button>
+      </footer>
+    </article>
+
+    <!-- STEP 4: REVEAL PHASE SCREEN -->
+    <article id="step-4-section" class="step-section" style="display: none;">
+      <header style="text-align: center;">
+        <h2>Round Reveal</h2>
+        <h1 id="reveal-actual-price" style="color: var(--success-color, #198754);">$0</h1>
+        <p id="minigame-recap-text"></p>
+      </header>
+
+      <div id="round-results-grid" class="results-grid">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <footer style="text-align: center; margin-top: 1.5rem;">
+        <button id="next-round-btn">▶ Start Next Round</button>
+      </footer>
+    </article>
 
   </main>
 
-  <!-- ==================================================== -->
-  <!-- MASTER LEADERBOARD MODAL                             -->
-  <!-- ==================================================== -->
-  <div id="leaderboard-modal" class="modal-overlay">
-    <div class="modal-content">
-      <button id="close-leaderboard-btn" class="modal-close-btn">&times;</button>
-      <h2 style="color: var(--primary-gold); margin-bottom: 0.5rem; text-align: center;">🏆 Master Leaderboard</h2>
-      <p class="text-muted" style="text-align: center; font-size: 0.9rem;">Cumulative score tracking across all rounds.</p>
+  <!-- LEADERBOARD MODAL DIALOG -->
+  <dialog id="leaderboard-modal">
+    <article style="width: 100%; max-width: 550px;">
+      <header>
+        <button id="close-leaderboard-btn" class="close" aria-label="Close" rel="prev" style="float:right;"></button>
+        <h3>🏆 Master Leaderboard</h3>
+        <p>Cumulative score tracking across all rounds.</p>
+      </header>
 
-      <table class="leaderboard-table">
+      <table class="striped">
         <thead>
           <tr>
             <th>Rank</th>
@@ -202,8 +177,8 @@
           <!-- Rendered dynamically -->
         </tbody>
       </table>
-    </div>
-  </div>
+    </article>
+  </dialog>
 
   <!-- Entry Point ES Module -->
   <script type="module" src="js/app.js"></script>

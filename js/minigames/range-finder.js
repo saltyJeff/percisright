@@ -19,7 +19,8 @@ export const rangeFinder = {
   renderPublicPlay: function (containerEl, winnerTeam, hostData, itemPrice, onComplete) {
     const { div, p, span, strong, button } = van.tags;
 
-    const winningBid = winnerTeam.bid || itemPrice;
+    const winningBid = Math.round(winnerTeam.bid || itemPrice);
+    const roundedPrice = Math.round(itemPrice);
     const selectedSpreadKey = van.state('');
     const isSubmitted = van.state(false);
 
@@ -33,10 +34,10 @@ export const rangeFinder = {
     van.add(containerEl,
       div({ class: 'range-finder-box' },
         div({ class: 'winner-banner' },
-          '🏆 ', span('Winning Bidding Team: ', strong(winnerTeam.name), ` (Bid: $${winningBid.toFixed(2)})`)
+          '🏆 ', span('Winning Bidding Team: ', strong(winnerTeam.name), ` (Bid: $${winningBid})`)
         ),
 
-        p('Choose your spread size around your bid of ', strong(`$${winningBid.toFixed(2)}`), ':'),
+        p('Choose your spread size around your bid of ', strong(`$${winningBid}`), ':'),
 
         div({ class: 'spread-choices' },
           spreads.map(sp => div({
@@ -50,11 +51,11 @@ export const rangeFinder = {
         ),
 
         () => selectedSpreadKey.val !== '' ? div({ id: 'rf-confirm-wrap', style: 'margin-top:1.5rem;' },
-          p('Selected Range: ', strong({ style: 'color:var(--accent-cyan); font-size:1.3rem;' }, () => {
+          p('Selected Range: ', strong({ style: 'font-size:1.3rem;' }, () => {
             const sp = spreads.find(s => s.key === selectedSpreadKey.val);
             const minB = Math.max(0, winningBid - sp.margin);
             const maxB = winningBid + sp.margin;
-            return `$${minB.toFixed(2)} — $${maxB.toFixed(2)} (+${sp.bonus}% Bonus)`;
+            return `$${minB} — $${maxB} (+${sp.bonus}% Bonus)`;
           })),
           button({
             class: 'btn btn-primary btn-lg',
@@ -66,15 +67,21 @@ export const rangeFinder = {
               const minB = Math.max(0, winningBid - sp.margin);
               const maxB = winningBid + sp.margin;
 
-              const inside = itemPrice >= minB && itemPrice <= maxB;
+              const inside = roundedPrice >= minB && roundedPrice <= maxB;
               const actualBonus = inside ? sp.bonus : 0;
 
               const outcomeText = inside
-                ? `SUCCESS! Secret price ($${itemPrice.toFixed(2)}) fell inside $${minB.toFixed(2)}–$${maxB.toFixed(2)}! (+${actualBonus}% Bonus)`
-                : `MISSED! Secret price ($${itemPrice.toFixed(2)}) fell outside $${minB.toFixed(2)}–$${maxB.toFixed(2)}. (+0% Bonus)`;
+                ? `SUCCESS! Secret price ($${roundedPrice}) fell inside $${minB}–$${maxB}! (+${actualBonus}% Bonus)`
+                : `MISSED! Secret price ($${roundedPrice}) fell outside $${minB}–$${maxB}. (+0% Bonus)`;
+
+              const potentialVal = Math.round(parseFloat(itemPrice || 100) * (sp.bonus / 100));
+              const awardedVal = inside ? potentialVal : 0;
 
               onComplete({
+                potentialBonusDollars: potentialVal,
+                bonusDollars: awardedVal,
                 bonusPercent: actualBonus,
+                success: inside,
                 outcomeText: outcomeText
               });
             }

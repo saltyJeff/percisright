@@ -108,8 +108,14 @@ export const highLowWheel = {
                   ? `WIN! Roll 1 (${firstRoll.val}) ➔ Roll 2 (${secondRoll}) matched prediction '${prediction.val}'. (+10% Bonus)`
                   : `LOST! Roll 1 (${firstRoll.val}) ➔ Roll 2 (${secondRoll}) did not match '${prediction.val}'. (+0% Bonus)`;
 
+                const potentialVal = Math.round(parseFloat(itemPrice || 100) * 0.10);
+                const awardedVal = correct ? potentialVal : 0;
+
                 onComplete({
+                  potentialBonusDollars: potentialVal,
+                  bonusDollars: awardedVal,
                   bonusPercent: bonus,
+                  success: correct,
                   outcomeText: outcomeText
                 });
               });

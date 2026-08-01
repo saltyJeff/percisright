@@ -108,8 +108,14 @@ export const shellGame = {
       // Reveal all
       cups.val = cups.val.map(c => ({ ...c, revealed: true }));
 
+      const potentialVal = Math.round(parseFloat(itemPrice || 100) * 0.10);
+      const awardedVal = Math.round(parseFloat(itemPrice || 100) * (picked.val / 100));
+
       onComplete({
+        potentialBonusDollars: potentialVal,
+        bonusDollars: awardedVal,
         bonusPercent: picked.val,
+        success: picked.val > 0,
         outcomeText: `Picked Cup #${idx + 1} revealing ${picked.label}!`
       });
     }

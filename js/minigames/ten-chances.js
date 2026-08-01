@@ -7,29 +7,22 @@ export const tenChances = {
   description: '5 jumbled digits hide a 3-digit price! Team gets 3 attempts (1st try = +15%, 2nd try = +10%, 3rd try = +5%).',
 
   renderHostConfig: function (containerEl, itemPrice) {
-    const { div, label, input } = van.tags;
-    const roundedPriceStr = Math.round(itemPrice).toString().padStart(3, '0');
+    const { p } = van.tags;
     containerEl.innerHTML = '';
     van.add(containerEl,
-      div({ class: 'form-group' },
-        label('3-Digit Target Price for Ten Chances ($)'),
-        input({ type: 'number', id: 'tc-target-price', class: 'form-control', value: roundedPriceStr.slice(-3), placeholder: 'e.g. 450' })
-      )
+      p({ class: 'text-muted', style: 'font-size:0.9rem;' }, 'Target digits are automatically derived from the last 3 digits of the actual item price.')
     );
   },
 
-  getHostData: function (containerEl) {
-    const rawVal = containerEl.querySelector('#tc-target-price');
-    const val = rawVal ? rawVal.value : '450';
-    return {
-      targetDigits: val.toString().padStart(3, '0').slice(-3)
-    };
+  getHostData: function () {
+    return {};
   },
 
   renderPublicPlay: function (containerEl, winnerTeam, hostData, itemPrice, onComplete) {
     const { div, p, span, strong, button } = van.tags;
 
-    const secretTarget = hostData.targetDigits || '450';
+    const roundedVal = Math.round(parseFloat(itemPrice) || 0);
+    const secretTarget = roundedVal.toString().padStart(3, '0').slice(-3);
     
     // Create 5 jumbled digits pool containing target digits
     let digitsPool = secretTarget.split('');
@@ -93,8 +86,14 @@ export const tenChances = {
                 const bonusTable = { 1: 15, 2: 10, 3: 5 };
                 const bonus = bonusTable[currentAttempt.val];
 
+                const maxPotential = Math.round(parseFloat(itemPrice || 100) * 0.15);
+                const awardedVal = Math.round(parseFloat(itemPrice || 100) * (bonus / 100));
+
                 onComplete({
+                  potentialBonusDollars: maxPotential,
+                  bonusDollars: awardedVal,
                   bonusPercent: bonus,
+                  success: true,
                   outcomeText: `SUCCESS! Guessed target ($${secretTarget}) on Try #${currentAttempt.val}! (+${bonus}% Bonus accuracy)`
                 });
               } else {
@@ -104,8 +103,13 @@ export const tenChances = {
                   alert(`Wrong guess! ${4 - currentAttempt.val} attempt(s) remaining.`);
                 } else {
                   isFinished.val = true;
+                  const maxPotential = Math.round(parseFloat(itemPrice || 100) * 0.15);
+
                   onComplete({
+                    potentialBonusDollars: maxPotential,
+                    bonusDollars: 0,
                     bonusPercent: 0,
+                    success: false,
                     outcomeText: `MISSED! Used all 3 attempts. Target was $${secretTarget}. (+0% Bonus)`
                   });
                 }

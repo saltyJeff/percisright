@@ -1,21 +1,20 @@
 /* Sliding Scale Mini-Game Styles */
 
 .sliding-scale-wrapper {
-  max-width: 650px;
+  max-width: 500px;
   margin: 0 auto;
 }
 
 .range-display {
-  font-size: 2.2rem;
-  font-weight: 800;
-  color: var(--accent-cyan);
-  margin: 1.25rem 0;
-  text-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 1rem 0;
 }
 
 .dual-slider-box {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  margin: 1.5rem 0;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  text-align: left;
 }

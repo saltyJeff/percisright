@@ -28,7 +28,6 @@ export const PriceIsRightApp = {
   currentStep: van.state(1),
   roundNumber: van.state(1),
   teams: van.state([]),
-  isHostBlurred: van.state(true),
   isLeaderboardOpen: van.state(false),
 
   roundData: {
@@ -46,12 +45,34 @@ export const PriceIsRightApp = {
   init: function () {
     this.loadState();
     this.bindHeaderControls();
+    this.renderHeaderTeamScores();
     this.renderStepNavigation();
     this.renderStep1();
     this.renderStep2();
-    this.renderStep3();
-    this.renderStep4();
     this.renderLeaderboardModal();
+  },
+
+  renderHeaderTeamScores: function () {
+    const self = this;
+    const container = document.getElementById('header-team-scores');
+    if (!container) return;
+
+    const { div, span } = van.tags;
+    van.derive(() => {
+      container.innerHTML = '';
+      if (!self.teams.val || self.teams.val.length === 0) return;
+
+      self.teams.val.forEach(team => {
+        const score = isNaN(parseFloat(team.totalScore)) ? 0 : Math.round(parseFloat(team.totalScore));
+        van.add(container,
+          div({ class: 'header-score-chip' },
+            span({ class: 'chip-dot', style: `background:${team.color};` }),
+            span({ class: 'chip-name' }, team.name + ':'),
+            span({ class: 'chip-score' }, `$${score}`)
+          )
+        );
+      });
+    });
   },
 
   loadState: function () {
@@ -60,7 +81,11 @@ export const PriceIsRightApp = {
       try {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.teams && parsed.teams.length > 0) {
-          this.teams.val = parsed.teams;
+          const sanitizedTeams = parsed.teams.map(t => ({
+            ...t,
+            totalScore: isNaN(parseFloat(t.totalScore)) ? 0 : parseFloat(t.totalScore)
+          }));
+          this.teams.val = sanitizedTeams;
           this.roundNumber.val = parsed.roundNumber || 1;
         }
       } catch (e) {}
@@ -86,7 +111,15 @@ export const PriceIsRightApp = {
   goToStep: function (stepNum) {
     this.currentStep.val = stepNum;
     if (stepNum === 2) {
+      const priceInput = document.getElementById('actual-price-input');
+      const itemInput = document.getElementById('item-name-input');
+      if (priceInput) priceInput.value = '';
+      if (itemInput) itemInput.value = '';
       this.renderHostMinigameConfig();
+    } else if (stepNum === 3) {
+      this.renderStep3();
+    } else if (stepNum === 4) {
+      this.renderStep4();
     }
   },
 
@@ -94,13 +127,34 @@ export const PriceIsRightApp = {
     const self = this;
     const leaderBtn = document.getElementById('open-leaderboard-btn');
     const resetBtn = document.getElementById('reset-game-btn');
+    const burgerBtn = document.getElementById('hamburger-btn');
+    const dropdown = document.getElementById('hamburger-dropdown');
+
+    if (burgerBtn && dropdown) {
+      burgerBtn.onclick = (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('show');
+      };
+
+      document.addEventListener('click', (e) => {
+        if (!dropdown.contains(e.target) && e.target !== burgerBtn) {
+          dropdown.classList.remove('show');
+        }
+      });
+    }
 
     if (leaderBtn) {
-      leaderBtn.onclick = () => self.isLeaderboardOpen.val = true;
+      leaderBtn.onclick = () => {
+        if (dropdown) dropdown.classList.remove('show');
+        self.isLeaderboardOpen.val = true;
+      };
     }
 
     if (resetBtn) {
-      resetBtn.onclick = () => self.resetGame();
+      resetBtn.onclick = () => {
+        if (dropdown) dropdown.classList.remove('show');
+        self.resetGame();
+      };
     }
   },
 
@@ -150,10 +204,10 @@ export const PriceIsRightApp = {
 
         van.add(container,
           div({ class: 'team-input-card' },
-            div({ class: 'team-color-badge', style: `background:${color};` }),
+            div({ class: 'team-color-badge', style: `width:12px; height:12px; border-radius:50%; background:${color}; display:inline-block; margin-right:6px;` }),
             input({
               type: 'text',
-              class: 'form-control team-name-input',
+              class: 'team-name-input',
               'data-index': i,
               value: name,
               placeholder: `Team ${i + 1} Name`
@@ -164,6 +218,9 @@ export const PriceIsRightApp = {
     }
 
     if (countInput) {
+      if (self.teams.val.length > 0) {
+        countInput.value = self.teams.val.length;
+      }
       countInput.oninput = (e) => buildTeamInputs(parseInt(e.target.value) || 2);
     }
 
@@ -174,11 +231,12 @@ export const PriceIsRightApp = {
         const inputEls = container.querySelectorAll('.team-name-input');
         const newTeams = [];
         inputEls.forEach((inp, idx) => {
+          const prevScore = (self.teams.val[idx] && !isNaN(self.teams.val[idx].totalScore)) ? parseFloat(self.teams.val[idx].totalScore) : 0;
           newTeams.push({
             id: 'team_' + idx,
             name: inp.value.trim() || `Team ${idx + 1}`,
             color: defaultColors[idx % defaultColors.length],
-            totalScore: (self.teams.val[idx] && self.teams.val[idx].totalScore) || 0
+            totalScore: prevScore
           });
         });
 
@@ -190,32 +248,16 @@ export const PriceIsRightApp = {
   },
 
   // ----------------------------------------------------
-  // STEP 2: SECRET HOST PREP PHASE
+  // STEP 2: HOST PREP PHASE
   // ----------------------------------------------------
   renderStep2: function () {
     const self = this;
     const titleEl = document.getElementById('round-number-title');
-    const blurContent = document.getElementById('host-secret-content');
-    const blurBtn = document.getElementById('toggle-host-blur-btn');
     const selectEl = document.getElementById('minigame-select');
     const beginBtn = document.getElementById('begin-public-round-btn');
 
     if (titleEl) {
       van.derive(() => titleEl.textContent = `Round ${self.roundNumber.val}`);
-    }
-
-    if (blurContent && blurBtn) {
-      van.derive(() => {
-        if (self.isHostBlurred.val) {
-          blurContent.classList.add('blurred');
-          blurBtn.textContent = '👁️ Reveal Host Info';
-        } else {
-          blurContent.classList.remove('blurred');
-          blurBtn.textContent = '🙈 Hide Secret Info';
-        }
-      });
-
-      blurBtn.onclick = () => self.isHostBlurred.val = !self.isHostBlurred.val;
     }
 
     if (selectEl) {
@@ -304,7 +346,7 @@ export const PriceIsRightApp = {
               span({ class: 'currency-symbol' }, '$'),
               input({
                 type: 'number',
-                class: 'form-control bid-input',
+                class: 'bid-input',
                 'data-team-id': team.id,
                 placeholder: '0.00',
                 step: '0.01'
@@ -342,6 +384,14 @@ export const PriceIsRightApp = {
           return;
         }
 
+        // Check for duplicate bid values to prevent ties
+        const bidValues = Object.values(bids);
+        const uniqueValues = new Set(bidValues);
+        if (uniqueValues.size < bidValues.length) {
+          alert('Duplicate bids are not allowed! Each team must enter a unique dollar amount to prevent ties.');
+          return;
+        }
+
         self.roundData.bids = bids;
 
         // Lock inputs visually
@@ -349,19 +399,29 @@ export const PriceIsRightApp = {
         bidInputs.forEach(i => i.disabled = true);
         lockBtn.style.display = 'none';
 
-        // Determine Bidding Phase Winner (Highest Accuracy)
-        const price = self.roundData.actualPrice;
-        let highestAcc = -1;
+        // Determine Bidding Phase Winner (Highest Bid Dollar Score with Tie-Breakers)
+        const price = parseFloat(self.roundData.actualPrice) || 0;
+        let highestBidScore = -Infinity;
         let winningTeam = self.teams.val[0];
+        let winnerIsUnder = false;
 
         self.teams.val.forEach(team => {
-          const bid = bids[team.id];
+          const bid = parseFloat(bids[team.id]) || 0;
           const diff = Math.abs(price - bid);
-          const acc = Math.max(0, 100 - ((diff / price) * 100));
+          const bidScore = Math.max(0, price - diff);
+          const isUnder = (bid <= price);
           team.bid = bid;
-          if (acc > highestAcc) {
-            highestAcc = acc;
+
+          if (bidScore > highestBidScore) {
+            highestBidScore = bidScore;
             winningTeam = team;
+            winnerIsUnder = isUnder;
+          } else if (bidScore === highestBidScore) {
+            // Tie-breaker: prefer team that did not go over actual price
+            if (isUnder && !winnerIsUnder) {
+              winningTeam = team;
+              winnerIsUnder = true;
+            }
           }
         });
 
@@ -402,21 +462,21 @@ export const PriceIsRightApp = {
     const container = document.getElementById('round-results-grid');
     const nextBtn = document.getElementById('next-round-btn');
 
-    const actualPrice = self.roundData.actualPrice;
-    const bids = self.roundData.bids;
+    const actualPrice = parseFloat(self.roundData.actualPrice) || 0;
+    const bids = self.roundData.bids || {};
     const minigameResult = self.roundData.minigameResult || { bonusPercent: 0, outcomeText: 'No Mini-Game Played' };
     const winningTeamId = self.roundData.winningTeamId;
 
-    if (priceTag) priceTag.textContent = `$${actualPrice.toFixed(2)}`;
+    if (priceTag) priceTag.textContent = `$${Math.round(actualPrice)}`;
     if (recapTag) recapTag.textContent = minigameResult.outcomeText;
 
-    // Closest Without Going Over Bonus (+5%)
+    // Closest Without Going Over Bonus (+5% of Actual Price in Dollars)
     let closestDiff = Infinity;
     let closestTeamIds = [];
 
     self.teams.val.forEach(team => {
-      const bid = bids[team.id] || 0;
-      if (bid <= actualPrice) {
+      const bid = parseFloat(bids[team.id]);
+      if (!isNaN(bid) && bid > 0 && bid <= actualPrice) {
         const diff = actualPrice - bid;
         if (diff < closestDiff) {
           closestDiff = diff;
@@ -427,38 +487,68 @@ export const PriceIsRightApp = {
       }
     });
 
+    const nonWinningCount = Math.max(1, self.teams.val.length - 1);
+    const potentialBonus = minigameResult.potentialBonusDollars || Math.round(actualPrice * 0.10);
+    const isMgFailed = minigameResult.success === false;
+    const splitBonusPerOtherTeam = isMgFailed ? Math.round(potentialBonus / nonWinningCount) : 0;
+
     if (container) {
       const { div, span, strong } = van.tags;
       container.innerHTML = '';
 
       const updatedTeams = self.teams.val.map(team => {
-        const bid = bids[team.id] || 0;
-        const diff = Math.abs(actualPrice - bid);
-        let rawAcc = Math.max(0, 100 - ((diff / actualPrice) * 100));
-        rawAcc = parseFloat(rawAcc.toFixed(1));
+        const bid = Math.round(parseFloat(bids[team.id]) || 0);
+        const roundedPrice = Math.round(actualPrice);
+        const diff = Math.abs(roundedPrice - bid);
+
+        // Bid Score ($) = max(0, Actual Price - |Actual Price - Bid|)
+        let bidScore = Math.max(0, roundedPrice - diff);
 
         const gotClosest = closestTeamIds.includes(team.id);
-        const closestVal = gotClosest ? 5.0 : 0.0;
+        const closestVal = gotClosest ? Math.round(roundedPrice * 0.05) : 0;
 
         const isMgWinner = (team.id === winningTeamId);
-        const mgVal = isMgWinner ? (minigameResult.bonusPercent || 0) : 0;
+        let mgVal = 0;
+        let mgLabel = 'Mini-Game Bonus:';
 
-        const totalRound = parseFloat((rawAcc + closestVal + mgVal).toFixed(1));
-        const newTotalScore = parseFloat(((team.totalScore || 0) + totalRound).toFixed(1));
+        if (isMgWinner) {
+          if (typeof minigameResult.bonusDollars === 'number' && !isNaN(minigameResult.bonusDollars)) {
+            mgVal = Math.round(minigameResult.bonusDollars);
+          } else {
+            const mgBonusPct = parseFloat(minigameResult.bonusPercent) || 0;
+            mgVal = Math.round(roundedPrice * (mgBonusPct / 100));
+          }
+          mgLabel = 'Mini-Game Bonus:';
+        } else {
+          if (isMgFailed && splitBonusPerOtherTeam > 0) {
+            mgVal = splitBonusPerOtherTeam;
+            mgLabel = 'Opponent Missed Steal:';
+          } else {
+            mgVal = 0;
+            mgLabel = 'Mini-Game Bonus:';
+          }
+        }
+
+        const totalRound = bidScore + closestVal + mgVal;
+        const prevTotal = isNaN(parseFloat(team.totalScore)) ? 0 : Math.round(parseFloat(team.totalScore));
+        const newTotalScore = prevTotal + totalRound;
+
+        const mgSign = mgVal >= 0 ? '+' : '-';
+        const mgDisplayVal = `$${Math.abs(mgVal)}`;
 
         van.add(container,
           div({ class: `result-card ${gotClosest ? 'winner' : ''}` },
-            gotClosest ? span({ class: 'closest-badge' }, '+5% Closest Under!') : div(),
+            gotClosest ? span({ class: 'closest-badge' }, `🏆 +$${closestVal} Closest Under!`) : div(),
             div({ class: 'team-name-tag' },
               span({ style: `width:14px; height:14px; border-radius:50%; background:${team.color}; display:inline-block;` }),
               team.name
             ),
             div({ class: 'score-breakdown-list' },
-              div({ class: 'score-row' }, span('Team Bid:'), strong(`$${bid.toFixed(2)}`)),
-              div({ class: 'score-row' }, span('Raw Accuracy:'), strong(`${rawAcc}%`)),
-              div({ class: 'score-row' }, span('Closest Bonus:'), strong(`+${closestVal}%`)),
-              div({ class: 'score-row' }, span('Mini-Game Bonus:'), strong(`+${mgVal}%`)),
-              div({ class: 'score-row total-row' }, span('Total Round Score:'), span(`${totalRound}%`))
+              div({ class: 'score-row' }, span('Team Bid:'), strong(`$${bid}`)),
+              div({ class: 'score-row' }, span('Bid Score ($):'), strong(`$${bidScore}`)),
+              div({ class: 'score-row' }, span('Closest Bonus (+5%):'), strong(gotClosest ? `+$${closestVal}` : '$0')),
+              div({ class: 'score-row' }, span(mgLabel), strong((isMgWinner || (isMgFailed && splitBonusPerOtherTeam > 0)) ? `${mgSign}${mgDisplayVal}` : '$0')),
+              div({ class: 'score-row total-row' }, span('Total Round Score:'), span(`$${totalRound}`))
             )
           )
         );
@@ -490,8 +580,13 @@ export const PriceIsRightApp = {
 
     if (modal) {
       van.derive(() => {
-        if (self.isLeaderboardOpen.val) modal.classList.add('open');
-        else modal.classList.remove('open');
+        if (self.isLeaderboardOpen.val) {
+          if (modal.showModal && !modal.open) modal.showModal();
+          else modal.setAttribute('open', 'true');
+        } else {
+          if (modal.close && modal.open) modal.close();
+          else modal.removeAttribute('open');
+        }
       });
 
       modal.onclick = (e) => {
@@ -510,6 +605,7 @@ export const PriceIsRightApp = {
         const sorted = [...self.teams.val].sort((a, b) => b.totalScore - a.totalScore);
         sorted.forEach((team, idx) => {
           const rankClass = idx < 3 ? `rank-${idx + 1}` : '';
+          const scoreVal = isNaN(parseFloat(team.totalScore)) ? 0 : Math.round(parseFloat(team.totalScore));
           van.add(tbody,
             tr(
               td(span({ class: `rank-badge ${rankClass}` }, idx + 1)),
@@ -517,7 +613,7 @@ export const PriceIsRightApp = {
                 span({ style: `width:10px; height:10px; border-radius:50%; background:${team.color}; display:inline-block; margin-right:6px;` }),
                 team.name
               ),
-              td({ style: 'font-weight:800; color:var(--primary-gold); font-size:1.1rem;' }, `${team.totalScore.toFixed(1)} pts`)
+              td({ style: 'font-weight:800; font-size:1.1rem;' }, `$${scoreVal}`)
             )
           );
         });

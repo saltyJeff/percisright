@@ -95,7 +95,7 @@ export const clockGame = {
               onclick: () => triggerPulse()
             }, '⬇ LOWER!')
           ),
-          div({ style: 'margin-top:1.5rem;' },
+          div({ style: 'margin-top:1.5rem; display:flex; gap:1rem; justify-content:center; flex-wrap:wrap;' },
             button({
               class: 'btn btn-primary btn-lg',
               style: 'background:linear-gradient(135deg, #00e676, #00b0ff);',
@@ -106,12 +106,36 @@ export const clockGame = {
                 const bonusIntervals = Math.floor(timeLeft.val / 3);
                 const bonusPercent = bonusIntervals * 1; // +1% per 3s
 
+                const maxPotential = Math.round(parseFloat(itemPrice || 100) * 0.10);
+                const awardedVal = Math.round(parseFloat(itemPrice || 100) * (bonusPercent / 100));
+
                 onComplete({
+                  potentialBonusDollars: maxPotential,
+                  bonusDollars: awardedVal,
                   bonusPercent: bonusPercent,
+                  success: true,
                   outcomeText: `CORRECT GUESS with ${timeLeft.val.toFixed(1)}s remaining! (+${bonusPercent}% Bonus accuracy)`
                 });
               }
-            }, '🎯 CORRECT GUESS!')
+            }, '🎯 CORRECT GUESS!'),
+            button({
+              class: 'btn btn-secondary btn-lg',
+              style: 'background:#dc3545; color:#fff; border:none;',
+              disabled: () => isCompleted.val,
+              onclick: () => {
+                stopTimer();
+                isCompleted.val = true;
+                const maxPotential = Math.round(parseFloat(itemPrice || 100) * 0.10);
+
+                onComplete({
+                  potentialBonusDollars: maxPotential,
+                  bonusDollars: 0,
+                  bonusPercent: 0,
+                  success: false,
+                  outcomeText: `OUT OF TIME / MISSED! Failed to guess price within 30s. (+0% Bonus)`
+                });
+              }
+            }, '❌ TIME UP / MISSED')
           )
         )
       )
