@@ -399,33 +399,40 @@ export const PriceIsRightApp = {
         bidInputs.forEach(i => i.disabled = true);
         lockBtn.style.display = 'none';
 
-        // Determine Bidding Phase Winner (Highest Bid Dollar Score with Tie-Breakers)
+        // Determine Bidding Phase Winner (Closest Under the Actual Price)
         const price = parseFloat(self.roundData.actualPrice) || 0;
-        let highestBidScore = -Infinity;
-        let winningTeam = self.teams.val[0];
-        let winnerIsUnder = false;
+        let winningTeam = null;
+        let closestUnderDiff = Infinity;
+        let closestOverallDiff = Infinity;
+        let closestOverallTeam = self.teams.val[0];
 
         self.teams.val.forEach(team => {
           const bid = parseFloat(bids[team.id]) || 0;
-          const diff = Math.abs(price - bid);
-          const bidScore = Math.max(0, price - diff);
-          const isUnder = (bid <= price);
           team.bid = bid;
+          const diff = Math.abs(price - bid);
 
-          if (bidScore > highestBidScore) {
-            highestBidScore = bidScore;
-            winningTeam = team;
-            winnerIsUnder = isUnder;
-          } else if (bidScore === highestBidScore) {
-            // Tie-breaker: prefer team that did not go over actual price
-            if (isUnder && !winnerIsUnder) {
+          // Track closest overall (in case everyone went over)
+          if (diff < closestOverallDiff) {
+            closestOverallDiff = diff;
+            closestOverallTeam = team;
+          }
+
+          // Check if under/equal to actual price
+          if (bid <= price) {
+            const underDiff = price - bid;
+            if (underDiff < closestUnderDiff) {
+              closestUnderDiff = underDiff;
               winningTeam = team;
-              winnerIsUnder = true;
             }
           }
         });
 
-        self.roundData.winningTeamId = winningTeam.id;
+        // If no team was under (everyone went over), fall back to closest overall
+        if (!winningTeam) {
+          winningTeam = closestOverallTeam;
+        }
+
+        self.roundData.winningTeamId = winningTeam ? winningTeam.id : null;
 
         // Render Active Mini-Game UI
         if (activeArea) {
