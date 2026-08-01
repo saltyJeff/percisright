@@ -1,6 +1,12 @@
 /**
- * Main Application Engine for Price Is Right Host Helper Dashboard
+ * Main Application Engine for Perc Is Right Host Helper Dashboard
  * Built using ES Modules (vanjs-core & vanjs-ext).
+ *
+ * Architecture: teams = vanX.reactive([]) makes every team property a
+ * reactive van.state under the hood. Reading team.totalScore inside a
+ * VanJS getter (() => team.totalScore) auto-subscribes to changes.
+ * Writing team.totalScore = X triggers all subscribed DOM nodes.
+ * No manual "version counter" needed.
  */
 
 import van from "vanjs-core";
@@ -22,613 +28,515 @@ window.MiniGameRegistry = {
   'ten-chances': tenChances
 };
 
-// Global App Manager & State
-export const PriceIsRightApp = {
-  // Reactive state using van.state
-  currentStep: van.state(1),
-  roundNumber: van.state(1),
-  teams: van.state([]),
-  isLeaderboardOpen: van.state(false),
+const { div, span, input, tr, td, strong } = van.tags;
+const STORAGE_KEY = 'perc_is_right_game_state_v3';
+const DEFAULT_NAMES = ['Team Alpha', 'Team Bravo', 'Team Charlie', 'Team Delta', 'Team Echo', 'Team Foxtrot'];
+const DEFAULT_COLORS = ['#ffd700', '#00f2fe', '#f093fb', '#00e676', '#ff8c00', '#ff0844'];
 
-  roundData: {
-    itemName: '',
-    actualPrice: 0,
-    minigameId: 'sliding-scale',
-    minigameHostData: {},
-    bids: {},
-    winningTeamId: null,
-    minigameResult: null
-  },
+// ----------------------------------------------------
+// REACTIVE STATE
+// ----------------------------------------------------
+const currentStep = van.state(1);
+const roundNumber = van.state(1);
+const teams = vanX.reactive([]);
+const isLeaderboardOpen = van.state(false);
+const bidsLocked = van.state(false);
+const lastCalculatedRound = van.state(0);
 
-  STORAGE_KEY: 'price_is_right_game_state_v2',
+const itemName = van.state('');
+const actualPrice = van.state(0);
+const minigameId = van.state('sliding-scale');
+const winningTeamId = van.state(null);
 
-  init: function () {
-    this.loadState();
-    this.bindHeaderControls();
-    this.renderHeaderTeamScores();
-    this.renderStepNavigation();
-    this.renderStep1();
-    this.renderStep2();
-    this.renderLeaderboardModal();
-  },
+let minigameHostData = {};
+const minigameResult = van.state(null);
 
-  renderHeaderTeamScores: function () {
-    const self = this;
-    const container = document.getElementById('header-team-scores');
-    if (!container) return;
+// Helper to build a fresh team object
+const makeTeam = (idx, overrides = {}) => ({
+  id: overrides.id || ('team_' + idx),
+  name: overrides.name || DEFAULT_NAMES[idx % DEFAULT_NAMES.length],
+  color: overrides.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length],
+  totalScore: overrides.totalScore || 0,
+  bid: null,
+  bidScore: 0,
+  gotClosest: false,
+  closestVal: 0,
+  mgVal: 0,
+  mgLabel: 'Mini-Game Bonus:',
+  totalRound: 0
+});
 
-    const { div, span } = van.tags;
-    van.derive(() => {
-      container.innerHTML = '';
-      if (!self.teams.val || self.teams.val.length === 0) return;
+// ----------------------------------------------------
+// STATE UTILITIES
+// ----------------------------------------------------
+const saveState = () => {
+  const snapshot = vanX.compact(teams).map(t => ({
+    id: t.id, name: t.name, color: t.color, totalScore: t.totalScore
+  }));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    teams: snapshot,
+    roundNumber: roundNumber.val,
+    lastCalculatedRound: lastCalculatedRound.val
+  }));
+};
 
-      self.teams.val.forEach(team => {
-        const score = isNaN(parseFloat(team.totalScore)) ? 0 : Math.round(parseFloat(team.totalScore));
-        van.add(container,
-          div({ class: 'header-score-chip' },
-            span({ class: 'chip-dot', style: `background:${team.color};` }),
-            span({ class: 'chip-name' }, team.name + ':'),
-            span({ class: 'chip-score' }, `$${score}`)
-          )
-        );
-      });
-    });
-  },
-
-  loadState: function () {
-    const saved = localStorage.getItem(this.STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.teams && parsed.teams.length > 0) {
-          const sanitizedTeams = parsed.teams.map(t => ({
-            ...t,
-            totalScore: isNaN(parseFloat(t.totalScore)) ? 0 : parseFloat(t.totalScore)
-          }));
-          this.teams.val = sanitizedTeams;
-          this.roundNumber.val = parsed.roundNumber || 1;
-        }
-      } catch (e) {}
+const loadState = () => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return;
+  try {
+    const parsed = JSON.parse(saved);
+    if (parsed?.teams?.length > 0) {
+      vanX.replace(teams, parsed.teams.map((t, idx) => makeTeam(idx, {
+        id: t.id,
+        name: (t.name && t.name.trim() && t.name.trim() !== 'Team') ? t.name : undefined,
+        color: t.color,
+        totalScore: parseFloat(t.totalScore) || 0
+      })));
+      roundNumber.val = parsed.roundNumber || 1;
+      lastCalculatedRound.val = parsed.lastCalculatedRound || 0;
     }
-  },
-
-  saveState: function () {
-    try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify({
-        teams: this.teams.val,
-        roundNumber: this.roundNumber.val
-      }));
-    } catch (e) {}
-  },
-
-  resetGame: function () {
-    if (confirm('Are you sure you want to reset the entire game and clear all scores?')) {
-      localStorage.removeItem(this.STORAGE_KEY);
-      location.reload();
-    }
-  },
-
-  goToStep: function (stepNum) {
-    this.currentStep.val = stepNum;
-    if (stepNum === 2) {
-      const priceInput = document.getElementById('actual-price-input');
-      const itemInput = document.getElementById('item-name-input');
-      if (priceInput) priceInput.value = '';
-      if (itemInput) itemInput.value = '';
-      this.renderHostMinigameConfig();
-    } else if (stepNum === 3) {
-      this.renderStep3();
-    } else if (stepNum === 4) {
-      this.renderStep4();
-    }
-  },
-
-  bindHeaderControls: function () {
-    const self = this;
-    const leaderBtn = document.getElementById('open-leaderboard-btn');
-    const resetBtn = document.getElementById('reset-game-btn');
-    const burgerBtn = document.getElementById('hamburger-btn');
-    const dropdown = document.getElementById('hamburger-dropdown');
-
-    if (burgerBtn && dropdown) {
-      burgerBtn.onclick = (e) => {
-        e.stopPropagation();
-        dropdown.classList.toggle('show');
-      };
-
-      document.addEventListener('click', (e) => {
-        if (!dropdown.contains(e.target) && e.target !== burgerBtn) {
-          dropdown.classList.remove('show');
-        }
-      });
-    }
-
-    if (leaderBtn) {
-      leaderBtn.onclick = () => {
-        if (dropdown) dropdown.classList.remove('show');
-        self.isLeaderboardOpen.val = true;
-      };
-    }
-
-    if (resetBtn) {
-      resetBtn.onclick = () => {
-        if (dropdown) dropdown.classList.remove('show');
-        self.resetGame();
-      };
-    }
-  },
-
-  renderStepNavigation: function () {
-    const self = this;
-    for (let i = 1; i <= 4; i++) {
-      const el = document.getElementById(`step-indicator-${i}`);
-      const sec = document.getElementById(`step-${i}-section`);
-
-      if (el) {
-        van.derive(() => {
-          el.className = 'step-item';
-          if (i < self.currentStep.val) el.classList.add('completed');
-          else if (i === self.currentStep.val) el.classList.add('active');
-        });
-      }
-
-      if (sec) {
-        van.derive(() => {
-          sec.style.display = (self.currentStep.val === i) ? 'block' : 'none';
-        });
-      }
-    }
-  },
-
-  // ----------------------------------------------------
-  // STEP 1: GAME SETUP
-  // ----------------------------------------------------
-  renderStep1: function () {
-    const self = this;
-    const countInput = document.getElementById('team-count-input');
-    const container = document.getElementById('teams-grid-container');
-    const startBtn = document.getElementById('start-game-btn');
-
-    const defaultColors = ['#ffd700', '#00f2fe', '#f093fb', '#00e676', '#ff8c00', '#ff0844'];
-    const defaultNames = ['Team Alpha', 'Team Bravo', 'Team Charlie', 'Team Delta', 'Team Echo', 'Team Foxtrot'];
-
-    function buildTeamInputs(count) {
-      if (!container) return;
-      const { div, input } = van.tags;
-      container.innerHTML = '';
-
-      const currentList = self.teams.val;
-      for (let i = 0; i < count; i++) {
-        const name = currentList[i] ? currentList[i].name : (defaultNames[i] || `Team ${i + 1}`);
-        const color = defaultColors[i % defaultColors.length];
-
-        van.add(container,
-          div({ class: 'team-input-card' },
-            div({ class: 'team-color-badge', style: `width:12px; height:12px; border-radius:50%; background:${color}; display:inline-block; margin-right:6px;` }),
-            input({
-              type: 'text',
-              class: 'team-name-input',
-              'data-index': i,
-              value: name,
-              placeholder: `Team ${i + 1} Name`
-            })
-          )
-        );
-      }
-    }
-
-    if (countInput) {
-      if (self.teams.val.length > 0) {
-        countInput.value = self.teams.val.length;
-      }
-      countInput.oninput = (e) => buildTeamInputs(parseInt(e.target.value) || 2);
-    }
-
-    buildTeamInputs(self.teams.val.length > 0 ? self.teams.val.length : 4);
-
-    if (startBtn) {
-      startBtn.onclick = () => {
-        const inputEls = container.querySelectorAll('.team-name-input');
-        const newTeams = [];
-        inputEls.forEach((inp, idx) => {
-          const prevScore = (self.teams.val[idx] && !isNaN(self.teams.val[idx].totalScore)) ? parseFloat(self.teams.val[idx].totalScore) : 0;
-          newTeams.push({
-            id: 'team_' + idx,
-            name: inp.value.trim() || `Team ${idx + 1}`,
-            color: defaultColors[idx % defaultColors.length],
-            totalScore: prevScore
-          });
-        });
-
-        self.teams.val = newTeams;
-        self.saveState();
-        self.goToStep(2);
-      };
-    }
-  },
-
-  // ----------------------------------------------------
-  // STEP 2: HOST PREP PHASE
-  // ----------------------------------------------------
-  renderStep2: function () {
-    const self = this;
-    const titleEl = document.getElementById('round-number-title');
-    const selectEl = document.getElementById('minigame-select');
-    const beginBtn = document.getElementById('begin-public-round-btn');
-
-    if (titleEl) {
-      van.derive(() => titleEl.textContent = `Round ${self.roundNumber.val}`);
-    }
-
-    if (selectEl) {
-      selectEl.onchange = () => self.renderHostMinigameConfig();
-    }
-
-    if (beginBtn) {
-      beginBtn.onclick = () => {
-        const priceInput = document.getElementById('actual-price-input');
-        const itemInput = document.getElementById('item-name-input');
-        const price = parseFloat(priceInput ? priceInput.value : 0);
-
-        if (isNaN(price) || price <= 0) {
-          alert('Please enter a valid actual price greater than $0!');
-          return;
-        }
-
-        const mgId = selectEl ? selectEl.value : 'sliding-scale';
-        const handler = window.MiniGameRegistry[mgId];
-        const configContainer = document.getElementById('minigame-host-config-container');
-        let hostData = {};
-
-        if (handler && handler.getHostData && configContainer) {
-          hostData = handler.getHostData(configContainer);
-        }
-
-        self.roundData = {
-          itemName: (itemInput && itemInput.value.trim()) || `Item #${self.roundNumber.val}`,
-          actualPrice: price,
-          minigameId: mgId,
-          minigameHostData: hostData,
-          bids: {},
-          winningTeamId: null,
-          minigameResult: null
-        };
-
-        self.goToStep(3);
-      };
-    }
-  },
-
-  renderHostMinigameConfig: function () {
-    const selectEl = document.getElementById('minigame-select');
-    const priceInput = document.getElementById('actual-price-input');
-    const configContainer = document.getElementById('minigame-host-config-container');
-
-    if (!selectEl || !configContainer) return;
-    const mgId = selectEl.value;
-    const handler = window.MiniGameRegistry[mgId];
-    const price = parseFloat(priceInput ? priceInput.value : 100) || 100;
-
-    if (handler && handler.renderHostConfig) {
-      handler.renderHostConfig(configContainer, price);
-    } else {
-      configContainer.innerHTML = '';
-    }
-  },
-
-  // ----------------------------------------------------
-  // STEP 3: PUBLIC BIDDING & MINI-GAME PHASE
-  // ----------------------------------------------------
-  renderStep3: function () {
-    const self = this;
-    const pubRoundEl = document.getElementById('pub-round-num');
-    const pubItemEl = document.getElementById('pub-item-name');
-    const container = document.getElementById('bidding-teams-container');
-    const lockBtn = document.getElementById('lock-bids-btn');
-    const activeArea = document.getElementById('active-minigame-area');
-    const revealBtn = document.getElementById('go-reveal-btn');
-
-    if (pubRoundEl) pubRoundEl.textContent = self.roundNumber.val;
-    if (pubItemEl) pubItemEl.textContent = self.roundData.itemName;
-
-    if (container) {
-      const { div, span, input } = van.tags;
-      container.innerHTML = '';
-
-      self.teams.val.forEach(team => {
-        van.add(container,
-          div({ class: 'bidding-card', id: `bidding-card-${team.id}` },
-            div({ class: 'team-name-tag' },
-              span({ style: `width:12px; height:12px; border-radius:50%; background:${team.color}; display:inline-block;` }),
-              team.name
-            ),
-            div({ class: 'bid-input-wrap' },
-              span({ class: 'currency-symbol' }, '$'),
-              input({
-                type: 'number',
-                class: 'bid-input',
-                'data-team-id': team.id,
-                placeholder: '0.00',
-                step: '0.01'
-              })
-            )
-          )
-        );
-      });
-    }
-
-    if (activeArea) {
-      activeArea.style.display = 'none';
-      activeArea.innerHTML = '';
-    }
-    if (revealBtn) revealBtn.style.display = 'none';
-
-    if (lockBtn) {
-      lockBtn.disabled = false;
-      lockBtn.style.display = 'inline-flex';
-
-      lockBtn.onclick = () => {
-        const bidInputs = container.querySelectorAll('.bid-input');
-        const bids = {};
-        let valid = true;
-
-        bidInputs.forEach(inp => {
-          const tId = inp.getAttribute('data-team-id');
-          const val = parseFloat(inp.value);
-          if (isNaN(val) || val < 0) valid = false;
-          else bids[tId] = val;
-        });
-
-        if (!valid) {
-          alert('Please enter valid numeric bids for all teams!');
-          return;
-        }
-
-        // Check for duplicate bid values to prevent ties
-        const bidValues = Object.values(bids);
-        const uniqueValues = new Set(bidValues);
-        if (uniqueValues.size < bidValues.length) {
-          alert('Duplicate bids are not allowed! Each team must enter a unique dollar amount to prevent ties.');
-          return;
-        }
-
-        self.roundData.bids = bids;
-
-        // Lock inputs visually
-        container.querySelectorAll('.bidding-card').forEach(c => c.classList.add('locked'));
-        bidInputs.forEach(i => i.disabled = true);
-        lockBtn.style.display = 'none';
-
-        // Determine Bidding Phase Winner (Closest Under the Actual Price)
-        const price = parseFloat(self.roundData.actualPrice) || 0;
-        let winningTeam = null;
-        let closestUnderDiff = Infinity;
-        let closestOverallDiff = Infinity;
-        let closestOverallTeam = self.teams.val[0];
-
-        self.teams.val.forEach(team => {
-          const bid = parseFloat(bids[team.id]) || 0;
-          team.bid = bid;
-          const diff = Math.abs(price - bid);
-
-          // Track closest overall (in case everyone went over)
-          if (diff < closestOverallDiff) {
-            closestOverallDiff = diff;
-            closestOverallTeam = team;
-          }
-
-          // Check if under/equal to actual price
-          if (bid <= price) {
-            const underDiff = price - bid;
-            if (underDiff < closestUnderDiff) {
-              closestUnderDiff = underDiff;
-              winningTeam = team;
-            }
-          }
-        });
-
-        // If no team was under (everyone went over), fall back to closest overall
-        if (!winningTeam) {
-          winningTeam = closestOverallTeam;
-        }
-
-        self.roundData.winningTeamId = winningTeam ? winningTeam.id : null;
-
-        // Render Active Mini-Game UI
-        if (activeArea) {
-          activeArea.style.display = 'block';
-          const handler = window.MiniGameRegistry[self.roundData.minigameId];
-          if (handler && handler.renderPublicPlay) {
-            handler.renderPublicPlay(
-              activeArea,
-              winningTeam,
-              self.roundData.minigameHostData,
-              self.roundData.actualPrice,
-              (res) => {
-                self.roundData.minigameResult = res;
-                if (revealBtn) revealBtn.style.display = 'inline-flex';
-              }
-            );
-          }
-        }
-      };
-    }
-
-    if (revealBtn) {
-      revealBtn.onclick = () => self.goToStep(4);
-    }
-  },
-
-  // ----------------------------------------------------
-  // STEP 4: REVEAL PHASE
-  // ----------------------------------------------------
-  renderStep4: function () {
-    const self = this;
-    const priceTag = document.getElementById('reveal-actual-price');
-    const recapTag = document.getElementById('minigame-recap-text');
-    const container = document.getElementById('round-results-grid');
-    const nextBtn = document.getElementById('next-round-btn');
-
-    const actualPrice = parseFloat(self.roundData.actualPrice) || 0;
-    const bids = self.roundData.bids || {};
-    const minigameResult = self.roundData.minigameResult || { bonusPercent: 0, outcomeText: 'No Mini-Game Played' };
-    const winningTeamId = self.roundData.winningTeamId;
-
-    if (priceTag) priceTag.textContent = `$${Math.round(actualPrice)}`;
-    if (recapTag) recapTag.textContent = minigameResult.outcomeText;
-
-    // Closest Without Going Over Bonus (+5% of Actual Price in Dollars)
-    let closestDiff = Infinity;
-    let closestTeamIds = [];
-
-    self.teams.val.forEach(team => {
-      const bid = parseFloat(bids[team.id]);
-      if (!isNaN(bid) && bid > 0 && bid <= actualPrice) {
-        const diff = actualPrice - bid;
-        if (diff < closestDiff) {
-          closestDiff = diff;
-          closestTeamIds = [team.id];
-        } else if (diff === closestDiff) {
-          closestTeamIds.push(team.id);
-        }
-      }
-    });
-
-    const nonWinningCount = Math.max(1, self.teams.val.length - 1);
-    const potentialBonus = minigameResult.potentialBonusDollars || Math.round(actualPrice * 0.10);
-    const isMgFailed = minigameResult.success === false;
-    const splitBonusPerOtherTeam = isMgFailed ? Math.round(potentialBonus / nonWinningCount) : 0;
-
-    if (container) {
-      const { div, span, strong } = van.tags;
-      container.innerHTML = '';
-
-      const updatedTeams = self.teams.val.map(team => {
-        const bid = Math.round(parseFloat(bids[team.id]) || 0);
-        const roundedPrice = Math.round(actualPrice);
-        const diff = Math.abs(roundedPrice - bid);
-
-        // Bid Score ($) = max(0, Actual Price - |Actual Price - Bid|)
-        let bidScore = Math.max(0, roundedPrice - diff);
-
-        const gotClosest = closestTeamIds.includes(team.id);
-        const closestVal = gotClosest ? Math.round(roundedPrice * 0.05) : 0;
-
-        const isMgWinner = (team.id === winningTeamId);
-        let mgVal = 0;
-        let mgLabel = 'Mini-Game Bonus:';
-
-        if (isMgWinner) {
-          if (typeof minigameResult.bonusDollars === 'number' && !isNaN(minigameResult.bonusDollars)) {
-            mgVal = Math.round(minigameResult.bonusDollars);
-          } else {
-            const mgBonusPct = parseFloat(minigameResult.bonusPercent) || 0;
-            mgVal = Math.round(roundedPrice * (mgBonusPct / 100));
-          }
-          mgLabel = 'Mini-Game Bonus:';
-        } else {
-          if (isMgFailed && splitBonusPerOtherTeam > 0) {
-            mgVal = splitBonusPerOtherTeam;
-            mgLabel = 'Opponent Missed Steal:';
-          } else {
-            mgVal = 0;
-            mgLabel = 'Mini-Game Bonus:';
-          }
-        }
-
-        const totalRound = bidScore + closestVal + mgVal;
-        const prevTotal = isNaN(parseFloat(team.totalScore)) ? 0 : Math.round(parseFloat(team.totalScore));
-        const newTotalScore = prevTotal + totalRound;
-
-        const mgSign = mgVal >= 0 ? '+' : '-';
-        const mgDisplayVal = `$${Math.abs(mgVal)}`;
-
-        van.add(container,
-          div({ class: `result-card ${gotClosest ? 'winner' : ''}` },
-            gotClosest ? span({ class: 'closest-badge' }, `🏆 +$${closestVal} Closest Under!`) : div(),
-            div({ class: 'team-name-tag' },
-              span({ style: `width:14px; height:14px; border-radius:50%; background:${team.color}; display:inline-block;` }),
-              team.name
-            ),
-            div({ class: 'score-breakdown-list' },
-              div({ class: 'score-row' }, span('Team Bid:'), strong(`$${bid}`)),
-              div({ class: 'score-row' }, span('Bid Score ($):'), strong(`$${bidScore}`)),
-              div({ class: 'score-row' }, span('Closest Bonus (+5%):'), strong(gotClosest ? `+$${closestVal}` : '$0')),
-              div({ class: 'score-row' }, span(mgLabel), strong((isMgWinner || (isMgFailed && splitBonusPerOtherTeam > 0)) ? `${mgSign}${mgDisplayVal}` : '$0')),
-              div({ class: 'score-row total-row' }, span('Total Round Score:'), span(`$${totalRound}`))
-            )
-          )
-        );
-
-        return { ...team, totalScore: newTotalScore };
-      });
-
-      self.teams.val = updatedTeams;
-      self.saveState();
-    }
-
-    if (nextBtn) {
-      nextBtn.onclick = () => {
-        self.roundNumber.val++;
-        self.saveState();
-        self.goToStep(2);
-      };
-    }
-  },
-
-  // ----------------------------------------------------
-  // MASTER LEADERBOARD MODAL
-  // ----------------------------------------------------
-  renderLeaderboardModal: function () {
-    const self = this;
-    const modal = document.getElementById('leaderboard-modal');
-    const closeBtn = document.getElementById('close-leaderboard-btn');
-    const tbody = document.getElementById('leaderboard-table-body');
-
-    if (modal) {
-      van.derive(() => {
-        if (self.isLeaderboardOpen.val) {
-          if (modal.showModal && !modal.open) modal.showModal();
-          else modal.setAttribute('open', 'true');
-        } else {
-          if (modal.close && modal.open) modal.close();
-          else modal.removeAttribute('open');
-        }
-      });
-
-      modal.onclick = (e) => {
-        if (e.target === modal) self.isLeaderboardOpen.val = false;
-      };
-    }
-
-    if (closeBtn) {
-      closeBtn.onclick = () => self.isLeaderboardOpen.val = false;
-    }
-
-    if (tbody) {
-      const { tr, td, span } = van.tags;
-      van.derive(() => {
-        tbody.innerHTML = '';
-        const sorted = [...self.teams.val].sort((a, b) => b.totalScore - a.totalScore);
-        sorted.forEach((team, idx) => {
-          const rankClass = idx < 3 ? `rank-${idx + 1}` : '';
-          const scoreVal = isNaN(parseFloat(team.totalScore)) ? 0 : Math.round(parseFloat(team.totalScore));
-          van.add(tbody,
-            tr(
-              td(span({ class: `rank-badge ${rankClass}` }, idx + 1)),
-              td({ style: 'font-weight:700;' },
-                span({ style: `width:10px; height:10px; border-radius:50%; background:${team.color}; display:inline-block; margin-right:6px;` }),
-                team.name
-              ),
-              td({ style: 'font-weight:800; font-size:1.1rem;' }, `$${scoreVal}`)
-            )
-          );
-        });
-      });
-    }
+  } catch (e) { /* ignore corrupt state */ }
+};
+
+const syncTeamsCount = (count) => {
+  while (teams.length < count) {
+    teams.push(makeTeam(teams.length));
+  }
+  if (teams.length > count) teams.splice(count);
+};
+
+const resetGame = () => {
+  if (confirm('Are you sure you want to reset the entire game and clear all scores?')) {
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
   }
 };
 
-window.addEventListener('DOMContentLoaded', () => {
-  PriceIsRightApp.init();
-});
+const goToStep = (stepNum) => {
+  currentStep.val = stepNum;
+
+  if (stepNum === 2) {
+    // Reset host form
+    const priceInput = document.getElementById('actual-price-input');
+    const itemInput = document.getElementById('item-name-input');
+    if (priceInput) priceInput.value = '';
+    if (itemInput) itemInput.value = '';
+    // Clear bids
+    bidsLocked.val = false;
+    for (let i = 0; i < teams.length; i++) teams[i].bid = null;
+    renderHostMinigameConfig();
+  } else if (stepNum === 3) {
+    // Clear bids and minigame area
+    bidsLocked.val = false;
+    for (let i = 0; i < teams.length; i++) teams[i].bid = null;
+    const activeArea = document.getElementById('active-minigame-area');
+    if (activeArea) { activeArea.style.display = 'none'; activeArea.innerHTML = ''; }
+  } else if (stepNum === 4) {
+    calculateRoundResults();
+  }
+};
+
+// ----------------------------------------------------
+// DECLARATIVE BINDINGS
+// All getters read reactive team properties directly.
+// vanX.reactive() makes each property a van.state.
+// ----------------------------------------------------
+const bindDeclarativeElements = () => {
+  // 1. Step bar indicators & section visibility
+  for (let i = 1; i <= 4; i++) {
+    const indicator = document.getElementById(`step-indicator-${i}`);
+    const section = document.getElementById(`step-${i}-section`);
+    if (indicator) van.derive(() => {
+      indicator.className = `step-item ${i < currentStep.val ? 'completed' : i === currentStep.val ? 'active' : ''}`;
+    });
+    if (section) van.derive(() => {
+      section.style.display = currentStep.val === i ? 'block' : 'none';
+    });
+  }
+
+  // 2. Header team score chips — reads team.name and team.totalScore reactively
+  const headerScores = document.getElementById('header-team-scores');
+  if (headerScores) {
+    vanX.list(headerScores, teams, ({val: t}) => div({ class: 'header-score-chip' },
+      span({ class: 'chip-dot', style: `background:${t.color};` }),
+      span({ class: 'chip-name' }, () => `${t.name}:`),
+      span({ class: 'chip-score' }, () => `$${Math.round(t.totalScore)}`)
+    ));
+  }
+
+  // 3. Step 1: Team name inputs
+  const teamsGrid = document.getElementById('teams-grid-container');
+  if (teamsGrid) {
+    vanX.list(teamsGrid, teams, ({val: team}) => div({ class: 'team-input-card' },
+      div({ class: 'team-color-badge', style: `width:12px;height:12px;border-radius:50%;background:${team.color};display:inline-block;margin-right:6px;` }),
+      input({
+        type: 'text', class: 'team-name-input',
+        value: () => team.name,
+        placeholder: 'Team Name',
+        oninput: (e) => { team.name = e.target.value; }
+      })
+    ));
+  }
+
+  // 4. Step 3: Round & item heading
+  const pubRoundEl = document.getElementById('pub-round-num');
+  if (pubRoundEl) van.derive(() => pubRoundEl.textContent = roundNumber.val);
+  const pubItemEl = document.getElementById('pub-item-name');
+  if (pubItemEl) van.derive(() => pubItemEl.textContent = itemName.val);
+
+  // 5. Step 3: Bidding cards
+  const biddingContainer = document.getElementById('bidding-teams-container');
+  if (biddingContainer) {
+    vanX.list(biddingContainer, teams, ({val: team}) => div({
+      class: () => `bidding-card${bidsLocked.val ? ' locked' : ''}`,
+      id: `bidding-card-${team.id}`
+    },
+      div({ class: 'team-name-tag' },
+        span({ style: `width:12px;height:12px;border-radius:50%;background:${team.color};display:inline-block;` }),
+        () => team.name
+      ),
+      div({ class: 'bid-input-wrap' },
+        span({ class: 'currency-symbol' }, '$'),
+        input({
+          type: 'number', class: 'bid-input',
+          placeholder: '0.00', step: '0.01', min: '0',
+          onkeydown: (e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); },
+          disabled: () => bidsLocked.val,
+          value: () => team.bid ?? '',
+          oninput: (e) => {
+            const val = e.target.value.trim();
+            const num = parseFloat(val);
+            team.bid = (val === '' || isNaN(num) || num < 0) ? null : num;
+          }
+        })
+      )
+    ));
+  }
+
+  // 6. Step 4: Actual price & recap
+  const priceTag = document.getElementById('reveal-actual-price');
+  if (priceTag) van.derive(() => priceTag.textContent = `$${Math.round(actualPrice.val)}`);
+  const recapTag = document.getElementById('minigame-recap-text');
+  if (recapTag) van.derive(() => recapTag.textContent = minigameResult.val?.outcomeText || 'No Mini-Game Played');
+
+  // 7. Step 4: Results breakdown cards — all getters read reactive properties
+  const resultsContainer = document.getElementById('round-results-grid');
+  if (resultsContainer) {
+    vanX.list(resultsContainer, teams, ({val: team}) => {
+      return div({ class: () => `result-card${team.gotClosest ? ' winner' : ''}` },
+        () => team.gotClosest
+          ? span({ class: 'closest-badge' }, () => `🏆 +$${Math.round(team.closestVal)} Closest Under!`)
+          : '',
+        div({ class: 'team-name-tag' },
+          span({ style: `width:14px;height:14px;border-radius:50%;background:${team.color};display:inline-block;` }),
+          () => team.name
+        ),
+        div({ class: 'score-breakdown-list' },
+          div({ class: 'score-row' }, span('Team Bid:'),
+            strong(() => team.bid != null ? `$${Math.round(team.bid)}` : '$0')),
+          div({ class: 'score-row' }, span('Bid Score ($):'),
+            strong(() => `$${Math.round(team.bidScore)}`)),
+          div({ class: 'score-row' }, span('Closest Bonus (+5%):'),
+            strong(() => team.gotClosest ? `+$${Math.round(team.closestVal)}` : '$0')),
+          div({ class: 'score-row' },
+            span(() => team.mgLabel),
+            strong(() => {
+              const isWinner = (team.id === winningTeamId.val);
+              const isFailed = (minigameResult.val?.success === false);
+              if (isWinner || (isFailed && team.mgVal > 0)) {
+                const sign = team.mgVal >= 0 ? '+' : '-';
+                return `${sign}$${Math.abs(team.mgVal)}`;
+              }
+              return '$0';
+            })),
+          div({ class: 'score-row total-row' }, span('Total Round Score:'),
+            span(() => `$${Math.round(team.totalRound)}`))
+        )
+      );
+    });
+  }
+
+  // 8. Leaderboard modal table — rebuilt whenever any team.totalScore changes
+  const tbody = document.getElementById('leaderboard-table-body');
+  if (tbody) {
+    van.derive(() => {
+      // Reading every team's totalScore subscribes to all of them
+      const data = [];
+      for (let i = 0; i < teams.length; i++) {
+        data.push({ name: teams[i].name, color: teams[i].color, totalScore: teams[i].totalScore });
+      }
+      data.sort((a, b) => b.totalScore - a.totalScore);
+
+      tbody.innerHTML = '';
+      data.forEach((t, idx) => {
+        van.add(tbody, tr(
+          td(span({ class: `rank-badge ${idx < 3 ? `rank-${idx + 1}` : ''}` }, idx + 1)),
+          td({ style: 'font-weight:700;' },
+            span({ style: `width:10px;height:10px;border-radius:50%;background:${t.color};display:inline-block;margin-right:6px;` }),
+            t.name
+          ),
+          td({ style: 'font-weight:800;font-size:1.1rem;' }, `$${Math.round(t.totalScore)}`)
+        ));
+      });
+    });
+  }
+};
+
+// ----------------------------------------------------
+// STEP CONTROLS / EVENT HANDLERS
+// ----------------------------------------------------
+const renderHostMinigameConfig = () => {
+  const selectEl = document.getElementById('minigame-select');
+  const priceInput = document.getElementById('actual-price-input');
+  const configContainer = document.getElementById('minigame-host-config-container');
+  if (!selectEl || !configContainer) return;
+  const handler = window.MiniGameRegistry[selectEl.value];
+  const price = parseFloat(priceInput?.value || 100) || 100;
+  if (handler?.renderHostConfig) {
+    handler.renderHostConfig(configContainer, price);
+  } else {
+    configContainer.innerHTML = '';
+  }
+};
+
+const setupControls = () => {
+  const selectEl = document.getElementById('minigame-select');
+  const beginBtn = document.getElementById('begin-public-round-btn');
+  const countInput = document.getElementById('team-count-input');
+  const startBtn = document.getElementById('start-game-btn');
+  const lockBtn = document.getElementById('lock-bids-btn');
+  const nextBtn = document.getElementById('next-round-btn');
+  const leaderBtn = document.getElementById('open-leaderboard-btn');
+  const resetBtn = document.getElementById('reset-game-btn');
+  const burgerBtn = document.getElementById('hamburger-btn');
+  const dropdown = document.getElementById('hamburger-dropdown');
+
+  // Header dropdown
+  if (burgerBtn && dropdown) {
+    burgerBtn.onclick = (e) => { e.stopPropagation(); dropdown.classList.toggle('show'); };
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target) && e.target !== burgerBtn) dropdown.classList.remove('show');
+    });
+  }
+  if (leaderBtn) leaderBtn.onclick = () => { dropdown?.classList.remove('show'); isLeaderboardOpen.val = true; };
+  if (resetBtn) resetBtn.onclick = () => { dropdown?.classList.remove('show'); resetGame(); };
+
+  // Step 1
+  if (countInput) {
+    countInput.value = teams.length || 4;
+    countInput.oninput = (e) => syncTeamsCount(Math.max(2, Math.min(6, parseInt(e.target.value) || 4)));
+  }
+  if (startBtn) {
+    startBtn.onclick = () => {
+      // Sanitize names: if user left it blank, assign default
+      for (let i = 0; i < teams.length; i++) {
+        const name = teams[i].name;
+        if (!name || !name.trim() || name.trim() === 'Team') {
+          teams[i].name = DEFAULT_NAMES[i % DEFAULT_NAMES.length];
+        }
+      }
+      saveState();
+      goToStep(2);
+    };
+  }
+
+  // Step 2
+  if (selectEl) selectEl.onchange = renderHostMinigameConfig;
+  if (beginBtn) {
+    beginBtn.onclick = () => {
+      const priceInput = document.getElementById('actual-price-input');
+      const itemInput = document.getElementById('item-name-input');
+      const price = parseFloat(priceInput?.value || 0);
+      if (isNaN(price) || price <= 0) return alert('Please enter a valid actual price greater than $0!');
+
+      itemName.val = itemInput?.value.trim() || `Item #${roundNumber.val}`;
+      actualPrice.val = price;
+      minigameId.val = selectEl?.value || 'sliding-scale';
+
+      const handler = window.MiniGameRegistry[minigameId.val];
+      const configContainer = document.getElementById('minigame-host-config-container');
+      minigameHostData = (handler?.getHostData && configContainer) ? handler.getHostData(configContainer) : {};
+      minigameResult.val = null;
+      winningTeamId.val = null;
+      goToStep(3);
+    };
+  }
+
+  // Step 3
+  if (lockBtn) {
+    van.derive(() => { lockBtn.style.display = bidsLocked.val ? 'none' : 'inline-flex'; });
+
+    lockBtn.onclick = () => {
+      const bidInputs = document.querySelectorAll('#bidding-teams-container .bid-input');
+      let valid = true;
+
+      for (let i = 0; i < teams.length; i++) {
+        const inp = bidInputs[i];
+        const raw = inp ? inp.value.trim() : '';
+        const val = parseFloat(raw);
+        if (raw === '' || isNaN(val) || val < 0) { valid = false; teams[i].bid = null; }
+        else { teams[i].bid = val; }
+      }
+      if (!valid) return alert('Please enter valid numeric bids for all teams!');
+
+      const bidValues = [];
+      for (let i = 0; i < teams.length; i++) bidValues.push(teams[i].bid);
+      if (new Set(bidValues).size < bidValues.length) {
+        return alert('Duplicate bids are not allowed! Each team must enter a unique dollar amount to prevent ties.');
+      }
+
+      bidsLocked.val = true;
+      const price = actualPrice.val;
+
+      // Find winner: closest under (fallback to closest overall)
+      let winningTeam = null, closestUnderDiff = Infinity, closestOverallDiff = Infinity, closestOverallTeam = teams[0];
+      for (let i = 0; i < teams.length; i++) {
+        const team = teams[i];
+        const diff = Math.abs(price - team.bid);
+        if (diff < closestOverallDiff) { closestOverallDiff = diff; closestOverallTeam = team; }
+        if (team.bid <= price) {
+          const underDiff = price - team.bid;
+          if (underDiff < closestUnderDiff) { closestUnderDiff = underDiff; winningTeam = team; }
+        }
+      }
+      winningTeam = winningTeam || closestOverallTeam;
+      winningTeamId.val = winningTeam.id;
+
+      // Show minigame
+      const activeArea = document.getElementById('active-minigame-area');
+      const revealBtn = document.getElementById('reveal-results-btn');
+      if (revealBtn) {
+        revealBtn.style.display = 'none';
+        revealBtn.classList.remove('pulse-glow');
+        revealBtn.onclick = () => goToStep(4);
+      }
+      if (activeArea) {
+        activeArea.style.display = 'block';
+        const handler = window.MiniGameRegistry[minigameId.val];
+        handler?.renderPublicPlay?.(activeArea, winningTeam, minigameHostData, price, (res) => {
+          minigameResult.val = res;
+          if (revealBtn) {
+            revealBtn.style.display = 'inline-flex';
+            revealBtn.classList.add('pulse-glow');
+            revealBtn.scrollIntoView({ behavior: 'smooth' });
+          }
+        });
+      }
+    };
+  }
+
+  // Step 4
+  if (nextBtn) {
+    nextBtn.onclick = () => {
+      roundNumber.val++;
+      minigameResult.val = null;
+      winningTeamId.val = null;
+      saveState();
+      goToStep(2);
+    };
+  }
+
+  // Leaderboard modal
+  const modal = document.getElementById('leaderboard-modal');
+  const closeBtn = document.getElementById('close-leaderboard-btn');
+  if (modal) {
+    van.derive(() => {
+      if (isLeaderboardOpen.val) {
+        if (modal.showModal && !modal.open) modal.showModal();
+        else modal.setAttribute('open', 'true');
+      } else {
+        if (modal.close && modal.open) modal.close();
+        else modal.removeAttribute('open');
+      }
+    });
+    modal.onclick = (e) => { if (e.target === modal) isLeaderboardOpen.val = false; };
+  }
+  if (closeBtn) closeBtn.onclick = () => isLeaderboardOpen.val = false;
+};
+
+// ----------------------------------------------------
+// ROUND SCORING
+// Writes directly to reactive team properties.
+// Every DOM node reading those properties auto-updates.
+// ----------------------------------------------------
+const calculateRoundResults = () => {
+  // Guard: don't double-count the same round
+  if (lastCalculatedRound.val >= roundNumber.val) return;
+
+  const price = actualPrice.val;
+
+  // Find closest-under team(s)
+  let closestUnderDiff = Infinity;
+  let closestTeamIds = [];
+  for (let i = 0; i < teams.length; i++) {
+    const bid = parseFloat(teams[i].bid);
+    if (!isNaN(bid) && bid >= 0 && bid <= price) {
+      const diff = price - bid;
+      if (diff < closestUnderDiff) { closestUnderDiff = diff; closestTeamIds = [teams[i].id]; }
+      else if (diff === closestUnderDiff) { closestTeamIds.push(teams[i].id); }
+    }
+  }
+  // Fallback: closest overall if everyone overbid
+  if (closestTeamIds.length === 0) {
+    let closestOverallDiff = Infinity;
+    for (let i = 0; i < teams.length; i++) {
+      const bid = parseFloat(teams[i].bid);
+      if (!isNaN(bid)) {
+        const diff = Math.abs(price - bid);
+        if (diff < closestOverallDiff) { closestOverallDiff = diff; closestTeamIds = [teams[i].id]; }
+        else if (diff === closestOverallDiff) { closestTeamIds.push(teams[i].id); }
+      }
+    }
+  }
+
+  const res = minigameResult.val;
+  const nonWinningCount = Math.max(1, teams.length - 1);
+  const potentialBonus = (res?.potentialBonusDollars !== undefined)
+    ? res.potentialBonusDollars
+    : Math.max(1, Math.round(price * 0.10));
+  const isMgFailed = res?.success === false;
+  const splitBonusPerOther = isMgFailed ? Math.max(1, Math.round(potentialBonus / nonWinningCount)) : 0;
+
+  // Score each team — each assignment triggers reactive UI updates
+  for (let i = 0; i < teams.length; i++) {
+    const team = teams[i];
+    const bid = parseFloat(team.bid);
+    const validBid = (!isNaN(bid) && bid >= 0) ? bid : 0;
+    const diff = Math.abs(price - validBid);
+
+    team.bidScore = Math.max(0, price - diff);
+    team.gotClosest = closestTeamIds.includes(team.id);
+    team.closestVal = (team.gotClosest && price > 0) ? Math.max(1, Math.round(price * 0.05)) : 0;
+
+    const isWinner = (team.id === winningTeamId.val);
+    if (isWinner) {
+      if (typeof res?.bonusDollars === 'number' && !isNaN(res.bonusDollars)) {
+        team.mgVal = Math.round(res.bonusDollars);
+      } else {
+        const pct = parseFloat(res?.bonusPercent) || 0;
+        team.mgVal = (pct > 0 && price > 0) ? Math.max(1, Math.round(price * (pct / 100))) : 0;
+      }
+      team.mgLabel = 'Mini-Game Bonus:';
+    } else if (isMgFailed && splitBonusPerOther > 0) {
+      team.mgVal = splitBonusPerOther;
+      team.mgLabel = 'Opponent Missed Steal:';
+    } else {
+      team.mgVal = 0;
+      team.mgLabel = 'Mini-Game Bonus:';
+    }
+
+    team.totalRound = team.bidScore + team.closestVal + team.mgVal;
+    team.totalScore = (team.totalScore || 0) + team.totalRound;
+  }
+
+  lastCalculatedRound.val = roundNumber.val;
+  saveState();
+};
+
+// ----------------------------------------------------
+// INITIALIZATION
+// ----------------------------------------------------
+loadState();
+bindDeclarativeElements();
+setupControls();
+if (teams.length === 0) syncTeamsCount(4);

@@ -25,10 +25,9 @@ export const highLowWheel = {
     const prediction = van.state('');
     const isSpinning = van.state(false);
 
-    function animateDie(targetVal, cb) {
+    const animateDie = (targetVal, cb) => {
       isSpinning.val = true;
-
-      let interval = setInterval(() => {
+      const interval = setInterval(() => {
         dieVal.val = Math.floor(Math.random() * 20) + 1;
       }, 50);
 
@@ -36,15 +35,15 @@ export const highLowWheel = {
         clearInterval(interval);
         isSpinning.val = false;
         dieVal.val = targetVal;
-        if (cb) cb();
+        cb?.();
       }, 1000);
-    }
+    };
 
     containerEl.innerHTML = '';
     van.add(containerEl,
       div({ class: 'wheel-spinner-box' },
         div({ class: 'winner-banner' },
-          '🏆 ', span('Winning Bidding Team: ', strong(winnerTeam.name))
+          '🏆 ', span('Winning Bidding Team: ', strong(() => winnerTeam?.name || 'Team'))
         ),
 
         div({
@@ -62,7 +61,7 @@ export const highLowWheel = {
               animateDie(rolled, () => step.val = 2);
             }
           }, '🎲 Spin 1-20 Die')
-        ) : div(),
+        ) : '',
 
         // Step 2 Controls
         () => step.val === 2 ? div(
@@ -84,7 +83,7 @@ export const highLowWheel = {
               }
             }, '⬇ LOWER')
           )
-        ) : div(),
+        ) : '',
 
         // Step 3 Controls
         () => step.val === 3 ? div(
@@ -116,12 +115,12 @@ export const highLowWheel = {
                   bonusDollars: awardedVal,
                   bonusPercent: bonus,
                   success: correct,
-                  outcomeText: outcomeText
+                  outcomeText
                 });
               });
             }
           }, '🎲 Spin Second Roll')
-        ) : div()
+        ) : ''
       )
     );
   }

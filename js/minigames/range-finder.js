@@ -34,7 +34,7 @@ export const rangeFinder = {
     van.add(containerEl,
       div({ class: 'range-finder-box' },
         div({ class: 'winner-banner' },
-          '🏆 ', span('Winning Bidding Team: ', strong(winnerTeam.name), ` (Bid: $${winningBid})`)
+          '🏆 ', span('Winning Bidding Team: ', strong(() => winnerTeam?.name || 'Team'), ` (Bid: $${winningBid})`)
         ),
 
         p('Choose your spread size around your bid of ', strong(`$${winningBid}`), ':'),
@@ -82,11 +82,11 @@ export const rangeFinder = {
                 bonusDollars: awardedVal,
                 bonusPercent: actualBonus,
                 success: inside,
-                outcomeText: outcomeText
+                outcomeText
               });
             }
           }, () => isSubmitted.val ? 'Target Locked' : 'Lock In Target Range')
-        ) : div()
+        ) : ''
       )
     );
   }

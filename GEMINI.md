@@ -64,8 +64,8 @@ Please write the full, self-contained single-file HTML/CSS/JS code (or React/Tai
 4. **Range Finder (Risk/Reward)** `[UNUSED/DISABLED]`
    - *(Disabled in host selection dropdown)*. Team selects a spread size (Narrow = $50 spread for +15% bonus; Medium = $100 for +10%; Wide = $200 for +5%). If actual price falls within, they win the bonus. If they miss, the spread value is deducted.
 
-5. **Clock Game (30-Second Rapid Fire)**
-   - *Public Play:* Built-in interactive 30-second timer with Start/Pause/Reset. Buttons for "Higher" and "Lower" audio/visual cues. Extra +1% bonus for every 3 seconds left on the clock.
+5. **Clock Game (30-Second Rapid Fire)** `[UNUSED/DISABLED]`
+   - *(Disabled in host selection dropdown)*. Built-in interactive 30-second timer with Start/Pause/Reset. Buttons for "Higher" and "Lower" audio/visual cues. Extra +1% bonus for every 3 seconds left on the clock.
 
 6. **Ten Chances (Number Jumble)**
    - *Public Play:* Screen displays 5 jumbled digits. Team gets 3 interactive attempts to guess the 3-digit price. (1st try = +15%, 2nd try = +10%, 3rd try = +5%).

@@ -6,7 +6,7 @@ export const tenChances = {
   name: 'Ten Chances (Number Jumble)',
   description: '5 jumbled digits hide a 3-digit price! Team gets 3 attempts (1st try = +15%, 2nd try = +10%, 3rd try = +5%).',
 
-  renderHostConfig: function (containerEl, itemPrice) {
+  renderHostConfig: function (containerEl) {
     const { p } = van.tags;
     containerEl.innerHTML = '';
     van.add(containerEl,
@@ -25,7 +25,7 @@ export const tenChances = {
     const secretTarget = roundedVal.toString().padStart(3, '0').slice(-3);
     
     // Create 5 jumbled digits pool containing target digits
-    let digitsPool = secretTarget.split('');
+    const digitsPool = secretTarget.split('');
     const randomDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
     while (digitsPool.length < 5) {
       const randD = randomDigits[Math.floor(Math.random() * randomDigits.length)];
@@ -41,7 +41,7 @@ export const tenChances = {
     van.add(containerEl,
       div({ class: 'ten-chances-box' },
         div({ class: 'winner-banner' },
-          '🏆 ', span('Winning Bidding Team: ', strong(winnerTeam.name))
+          '🏆 ', span('Winning Bidding Team: ', strong(() => winnerTeam?.name || 'Team'))
         ),
 
         div({ class: 'attempt-badges' },

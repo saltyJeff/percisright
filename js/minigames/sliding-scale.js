@@ -9,7 +9,7 @@ export const slidingScale = {
   renderHostConfig: function (containerEl, itemPrice) {
     const { div, label, input, small } = van.tags;
     const defaultTarget = Math.round(itemPrice || 100);
-    const defaultMargin = Math.max(5, Math.round(defaultTarget * 0.10));
+    const marginState = van.state(Math.max(5, Math.round(defaultTarget * 0.10)));
 
     containerEl.innerHTML = '';
     van.add(containerEl,
@@ -31,30 +31,22 @@ export const slidingScale = {
           type: 'number',
           id: 'ss-host-margin',
           class: 'form-control',
-          value: defaultMargin,
+          value: () => marginState.val,
           step: '1',
-          min: '1'
+          min: '1',
+          oninput: (e) => marginState.val = Math.round(parseFloat(e.target.value) || 1)
         }),
-        small({ class: 'text-muted' }, `Player's range width will be ±$${defaultMargin} (Total range span = $${defaultMargin * 2}) around their chosen center.`)
+        small({ class: 'text-muted' }, () => `Player's range width will be ±$${marginState.val} (Total range span = $${marginState.val * 2}) around their chosen center.`)
       )
     );
-
-    const marginInp = containerEl.querySelector('#ss-host-margin');
-    if (marginInp) {
-      marginInp.oninput = (e) => {
-        const val = Math.round(parseFloat(e.target.value) || 1);
-        const smallEl = marginInp.parentElement.querySelector('small');
-        if (smallEl) smallEl.textContent = `Player's range width will be ±$${val} (Total range span = $${val * 2}) around their chosen center.`;
-      };
-    }
   },
 
   getHostData: function (containerEl) {
     const targetInput = containerEl.querySelector('#ss-host-target-price');
     const marginInput = containerEl.querySelector('#ss-host-margin');
 
-    const targetPrice = parseFloat(targetInput ? targetInput.value : NaN);
-    const margin = Math.round(parseFloat(marginInput ? marginInput.value : 5));
+    const targetPrice = parseFloat(targetInput?.value);
+    const margin = Math.round(parseFloat(marginInput?.value || 5));
 
     return {
       targetPrice: (!isNaN(targetPrice) && targetPrice > 0) ? targetPrice : null,
@@ -66,7 +58,7 @@ export const slidingScale = {
     const { div, p, span, strong, input, button, label } = van.tags;
 
     const margin = Math.round(hostData.margin || 5);
-    const targetPrice = (hostData && hostData.targetPrice) ? hostData.targetPrice : itemPrice;
+    const targetPrice = hostData?.targetPrice || itemPrice;
     const bonusAward = Math.round(targetPrice * 0.10);
 
     const defaultCenter = Math.round(winnerTeam.bid && winnerTeam.bid > 0 ? winnerTeam.bid : targetPrice);
@@ -77,7 +69,7 @@ export const slidingScale = {
     van.add(containerEl,
       div({ class: 'sliding-scale-wrapper' },
         div({ class: 'winner-banner' },
-          '🏆 ', span('Winning Bidding Team: ', strong(winnerTeam.name))
+          '🏆 ', span('Winning Bidding Team: ', strong(() => winnerTeam?.name || 'Team'))
         ),
         p('Set your ', strong('Center Target Price'), ' below. Your range width is ', strong(`±$${margin}`), '. If the secret price falls inside your range, earn ', strong(`+$${bonusAward} Bonus (+10%)`), '!'),
 
@@ -87,7 +79,7 @@ export const slidingScale = {
             input({
               type: 'number',
               class: 'form-control',
-              value: centerVal.val,
+              value: () => centerVal.val,
               step: '1',
               oninput: (e) => centerVal.val = Math.round(parseFloat(e.target.value) || 0)
             })
@@ -126,7 +118,7 @@ export const slidingScale = {
               bonusDollars: awardedDollars,
               bonusPercent: inside ? 10 : 0,
               success: inside,
-              outcomeText: outcomeText
+              outcomeText
             });
           }
         }, () => isSubmitted.val ? 'Target Locked' : 'Lock In Target Range')
